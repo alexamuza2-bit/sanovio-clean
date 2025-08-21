@@ -1,4 +1,3 @@
-
 'use client'
 
 import React, { useEffect, useRef, useState } from "react";
@@ -53,15 +52,25 @@ export default function LandingPage() {
 
   const PHONE_LINK = "tel:+40700000000";
 
+  // Logo
   const [logoSrc, setLogoSrc] = useState<string>("");
   const [canEditLogo, setCanEditLogo] = useState<boolean>(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
+  // Imagini custom (fără galerie): fundal hero, bandă mijloc, imagine laterală
   const [imgs, setImgs] = useState<{ hero: string; mid: string; aside: string }>({ hero: "", mid: "", aside: "" });
   const [defaults, setDefaults] = useState<{ hero: string; mid: string; aside: string }>({ hero: "", mid: "", aside: "" });
   const heroRef = useRef<HTMLInputElement | null>(null);
   const midRef = useRef<HTMLInputElement | null>(null);
   const asideRef = useRef<HTMLInputElement | null>(null);
+
+  // Fallback-uri globale (valabile pentru toți vizitatorii)
+  const GLOBAL_DEFAULTS = {
+    logo: "/logo.png",           // pune logo-ul original aici (public/logo.png)
+    hero: "/hero.jpeg",          // imaginea HERO (public/hero.jpeg)
+    mid: "/section-bg.jpg",      // fundal secțiune pachete (public/section-bg.jpg)
+    aside: "" as string           // opțional: imagine laterală implicită
+  };
 
   const setFavicon = (uri: string) => {
     const linkId = "fav-sanovio";
@@ -75,10 +84,11 @@ export default function LandingPage() {
     (link as HTMLLinkElement).href = uri;
   };
 
+  // Load persistente
   useEffect(() => {
     try {
       const saved = localStorage.getItem("sanovio_logo");
-      if (saved) { setLogoSrc(saved); setFavicon(saved); }
+      if (saved) { setLogoSrc(saved); setFavicon(saved); } else { setFavicon(GLOBAL_DEFAULTS.logo); }
       const hero = localStorage.getItem("sanovio_img_hero") || "";
       const mid = localStorage.getItem("sanovio_img_mid") || "";
       const aside = localStorage.getItem("sanovio_img_aside") || "";
@@ -116,6 +126,7 @@ export default function LandingPage() {
     reader.readAsDataURL(file);
   };
 
+  // Helpers upload imagini
   const pick = (which: 'hero' | 'mid' | 'aside') => () => {
     ({ hero: heroRef, mid: midRef, aside: asideRef }[which].current)?.click();
   };
@@ -143,6 +154,42 @@ export default function LandingPage() {
   const clearDefault = (which: 'hero' | 'mid' | 'aside') => () => {
     try { localStorage.removeItem(`sanovio_default_${which}`); } catch {}
     setDefaults(prev => ({ ...prev, [which]: "" }));
+  };
+
+  // Export helpers (evităm dublarea numelui)
+  const triggerDownload = async (src: string, filename: string) => {
+    try {
+      let url = src;
+      if (!src.startsWith('data:')) {
+        if (src.startsWith('/')) url = window.location.origin + src;
+        const res = await fetch(url, { credentials: 'omit' });
+        if (!res.ok) throw new Error('fetch-failed');
+        const blob = await res.blob();
+        url = URL.createObjectURL(blob);
+      }
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+    } catch (e) {
+      alert('Nu am putut descărca fișierul din editor. Dacă folosești fallback-ul global (/logo.png, /hero.jpeg) și nu există în preview, încarcă imaginea din “Schimbă logo/hero” sau descarcă din site-ul live după deploy.');
+    }
+  };
+  const exportLogo = async () => {
+    const src = logoSrc || GLOBAL_DEFAULTS.logo;
+    if (src) await triggerDownload(src, 'logo.png');
+  };
+  const exportHero = async () => {
+    const src = imgs.hero || defaults.hero || GLOBAL_DEFAULTS.hero;
+    if (src) await triggerDownload(src, 'hero.jpeg');
+  };
+  const resetLogo = () => {
+    setLogoSrc("");
+    try { localStorage.removeItem('sanovio_logo'); } catch {}
+    setFavicon(GLOBAL_DEFAULTS.logo);
   };
 
   const toggleHeroFlip = () => {
@@ -197,12 +244,13 @@ export default function LandingPage() {
     { name: "Premium", price: "ofertă personalizată", perks: ["Case / sedii mari", "Manager de cont dedicat", "Program recurent"] },
   ];
 
-  const heroSrc = imgs.hero || defaults.hero;
-  const midSrc = imgs.mid || defaults.mid;
-  const asideSrc = imgs.aside || defaults.aside;
+  const heroSrc = imgs.hero || defaults.hero || GLOBAL_DEFAULTS.hero;
+  const midSrc = imgs.mid || defaults.mid || GLOBAL_DEFAULTS.mid;
+  const asideSrc = imgs.aside || defaults.aside || GLOBAL_DEFAULTS.aside;
 
   const gradClass = heroGrad === 'strong' ? 'from-white/90 via-white/50' : heroGrad === 'light' ? 'from-white/60 via-white/20' : 'from-white/80 via-white/40';
 
+  // Teste runtime (nu le schimb)
   useEffect(() => {
     console.assert(Array.isArray(features) && features.length === 3, "features length should be 3");
     console.assert(features.every(f => typeof f.title === 'string' && typeof f.desc === 'string'), "each feature must have title+desc strings");
@@ -251,6 +299,14 @@ export default function LandingPage() {
           {imgs.mid && <button onClick={clearImg('mid')} className="inline-flex items-center gap-1 text-xs text-slate-600 hover:text-slate-900"><X className="w-3 h-3"/>Șterge secțiune</button>}
           {imgs.mid && <button onClick={saveDefault('mid')} className="inline-flex items-center gap-1 text-xs text-slate-600 hover:text-slate-900"><Check className="w-3 h-3"/>Setează Secțiune implicit</button>}
           {defaults.mid && <button onClick={clearDefault('mid')} className="inline-flex items-center gap-1 text-xs text-slate-600 hover:text-slate-900"><X className="w-3 h-3"/>Șterge Secțiune implicit</button>}
+          <span className="mx-2 text-slate-500">—</span>
+          <button onClick={exportLogo} className="rounded px-2 py-1 border hover:bg-white">Descarcă LOGO (deploy)</button>
+          {(imgs.hero || defaults.hero || GLOBAL_DEFAULTS.hero) && (
+            <button onClick={exportHero} className="rounded px-2 py-1 border hover:bg-white">Descarcă HERO (deploy)</button>
+          )}
+          {logoSrc && (
+            <button onClick={resetLogo} className="inline-flex items-center gap-1 text-xs text-slate-600 hover:text-slate-900"><X className="w-3 h-3"/>Reset logo</button>
+          )}
         </div>
       )}
 
@@ -260,7 +316,7 @@ export default function LandingPage() {
             {logoSrc ? (
               <img src={logoSrc} alt="Sanovio Clean" className="w-9 h-9 rounded-2xl object-contain bg-white" />
             ) : (
-              <LogoSVG className="w-9 h-9 rounded-2xl" />
+              <img src={GLOBAL_DEFAULTS.logo} alt="Sanovio Clean" className="w-9 h-9 rounded-2xl object-contain bg-white" />
             )}
             <span className="font-semibold tracking-tight">Sanovio Clean</span>
             <input ref={fileRef} type="file" accept="image/*" onChange={onLogoChange} className="hidden" />
@@ -274,15 +330,16 @@ export default function LandingPage() {
             <button onClick={scrollTo(undefined)} className="hover:opacity-80">Despre</button>
             <button onClick={scrollTo(contactRef)} className="hover:opacity-80">Contact</button>
           </nav>
-          <div className="flex items-center gap-3 md:mr-2">
+          <div className="flex items-center gap-4 md:mr-2">
             <a href={PHONE_LINK} className="hover:opacity-80" aria-label="Sună-ne"><Phone className="w-5 h-5 text-[#25D366]"/></a>
             <a href="#" className="hover:opacity-80" aria-label="Facebook"><Facebook className="w-5 h-5 text-[#163a5a]"/></a>
             <a href="#" className="hover:opacity-80" aria-label="Instagram"><Instagram className="w-5 h-5 text-[#163a5a]"/></a>
           </div>
-          <Button onClick={scrollTo(contactRef)} className="rounded-2xl bg-[#1f7fb3] hover:bg-[#163a5a]">Cere ofertă</Button>
+          <Button onClick={scrollTo(contactRef)} className="ml-3 shrink-0 rounded-2xl bg-[#1f7fb3] hover:bg-[#163a5a]">Cere ofertă</Button>
         </div>
       </header>
 
+      {/* HERO */}
       <section className="relative overflow-hidden">
         {canEditLogo && !imgs.hero && !defaults.hero && (
           <button onClick={pick('hero')} className="absolute z-10 right-4 top-4 bg-white/80 backdrop-blur rounded-2xl px-3 py-1 border text-sm hover:bg-white">Adaugă fundal HERO</button>
@@ -300,13 +357,14 @@ export default function LandingPage() {
             <div className="absolute -bottom-24 -left-24 w-[30rem] h-[30rem] bg-[#e7f3fb] rounded-full blur-3xl" />
           </div>
         )}
+        {/* fade top spre header */}
         <div className="pointer-events-none absolute inset-x-0 top-0 h-16 md:h-24 z-[1] bg-gradient-to-b from-[#e7f3fb] to-transparent" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 md:h-24 z-[1] bg-gradient-to-t from-[#e7f3fb] to-transparent" />
 
         <div className="relative z-10 max-w-6xl mx-auto px-4 py-20 md:py-28 grid md:grid-cols-2 gap-10 items-center">
           <motion.div className={heroSwap ? 'md:order-2' : 'md:order-1'} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5 }}>
-            <h1 className="text-4xl md:text-6xl font-bold tracking-tight leading-tight">Curățenie impecabilă, fără bătăi de cap.</h1>
-            <p className="mt-5 text-slate-700 text-lg max-w-prose">Servicii profesionale pentru locuințe și birouri în București & Ilfov. Program flexibil, prețuri transparente, garanție de satisfacție.</p>
+            <h1 className="text-4xl md:text-6xl font-bold tracking-tight leading-tight">Ștergem grija, nu doar praful.</h1>
+            <p className="mt-5 text-slate-700 text-lg max-w-prose">Suntem Sanovio și facem curățenie ca pentru noi acasă - cu grijă și respect. Ne găsești in București și Ilfov, gata să intervenim ori de câte ori ai nevoie de un spațiu curat, luminos și ordonat.</p>
             <div className="mt-6 flex flex-wrap gap-3">
               <Button onClick={scrollTo(contactRef)} className="rounded-2xl bg-[#1f7fb3] hover:bg-[#163a5a]">Solicită ofertă</Button>
               <Button onClick={scrollTo(servicesRef)} variant="outline" className="rounded-2xl border-[#1f7fb3] text-[#163a5a] hover:bg-[#e7f3fb]">Vezi servicii</Button>
@@ -336,6 +394,7 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* SERVICII */}
       <section ref={servicesRef} id="servicii" className="py-14 md:py-20">
         <div className="relative z-10 max-w-6xl mx-auto px-4">
           <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">Serviciile Sanovio Clean</h2>
@@ -358,6 +417,7 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* PREȚURI */}
       <section ref={pricesRef} id="preturi" className="py-16 md:py-24 bg-white relative">
         {canEditLogo && !imgs.mid && (
           <button onClick={pick('mid')} className="absolute z-10 right-4 top-4 bg-white/80 backdrop-blur rounded-2xl px-3 py-1 border text-sm hover:bg-white">Adaugă fundal secțiune</button>
@@ -368,6 +428,7 @@ export default function LandingPage() {
             <div className="absolute inset-0 bg-[#e7f3fb]/60 pointer-events-none"/>
           </div>
         )}
+        {/* Fade sus & jos pentru tranziție fină între secțiuni */}
         <div className="pointer-events-none absolute inset-x-0 top-0 h-20 md:h-24 z-[1] bg-gradient-to-b from-[#e7f3fb] to-transparent" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 md:h-20 z-[1] bg-gradient-to-t from-white to-transparent" />
 
@@ -406,6 +467,7 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* CTA */}
       <section className="py-10">
         <div className="max-w-6xl mx-auto px-4">
           <div className="rounded-2xl p-6 md:p-8 border bg-gradient-to-r from-[#1f7fb3] to-[#e7f3fb]">
@@ -420,6 +482,7 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* CONTACT */}
       <section id="contact" ref={contactRef} className="py-14 md:py-20 bg-white">
         <div className="max-w-6xl mx-auto px-4 grid md:grid-cols-2 gap-10">
           <div>
@@ -448,6 +511,7 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* FAB Phone */}
       <a id="phone-fab" href={PHONE_LINK} className="fixed bottom-5 right-5 z-50 inline-flex items-center justify-center w-14 h-14 rounded-full border-2 border-[#25D366] bg-white/95 backdrop-blur hover:bg-white shadow-lg" aria-label="Sună-ne">
         <Phone className="w-7 h-7 md:w-8 md:h-8 text-[#25D366]"/>
       </a>
@@ -465,6 +529,7 @@ export default function LandingPage() {
         </div>
       </footer>
 
+      {/* input-uri ascunse pentru imagini */}
       <input ref={heroRef} type="file" accept="image/*" onChange={onImgChange('hero')} className="hidden" />
       <input ref={midRef} type="file" accept="image/*" onChange={onImgChange('mid')} className="hidden" />
       <input ref={asideRef} type="file" accept="image/*" onChange={onImgChange('aside')} className="hidden" />
